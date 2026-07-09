@@ -106,7 +106,7 @@ pacman --noconfirm -S rust go
 
 # Exclude known AUR-only packages from pacman -Syw (they cannot be in any repo).
 # The AUR build loop below handles them from source.
-# Only yaru-icon-theme and asusctl are from Chaotic-AUR; the rest are core/extra.
+# yaru-icon-theme is from Chaotic-AUR; asusctl is not in the ISO, installed later.
 aur_only=(
   apple_cursor battop-bin cliamp-bin
   elephant elephant-symbols elephant-clipboard
