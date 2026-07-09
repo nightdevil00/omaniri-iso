@@ -81,16 +81,20 @@ mkdir -p /tmp/offlinedb
 pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
 
 # Build AUR packages that aren't in official repos
+# makepkg refuses to run as root, so create a build user
+useradd -m builder
+echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 mkdir -p /tmp/aurbuild
+chown builder:builder /tmp/aurbuild
 for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
   if pacman -Si "$pkg" &>/dev/null; then
     continue
   fi
   echo "Building AUR package: $pkg"
-  git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aurbuild/$pkg" 2>/dev/null || continue
+  sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aurbuild/$pkg" 2>/dev/null || continue
   cd "/tmp/aurbuild/$pkg"
-  MAKEFLAGS="-j$(nproc)" makepkg -s --noconfirm --needed 2>&1 || true
-  cp -f *.pkg.tar.zst "$offline_mirror_dir/" 2>/dev/null || true
+  sudo -u builder MAKEFLAGS="-j$(nproc)" makepkg -s --noconfirm --needed --skippgpcheck 2>&1 || true
+  find /tmp/aurbuild/$pkg -name '*.pkg.tar.zst' -exec cp -f {} "$offline_mirror_dir/" \; 2>/dev/null || true
   cd /
 done
 
