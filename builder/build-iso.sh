@@ -104,16 +104,20 @@ chown builder:builder /tmp/aur-build
 # so makepkg -s does not prompt for provider selection during dependency resolution
 pacman --noconfirm -S rust go
 
-# Filter all_packages to only those resolvable in configured repos (core, extra, chaotic-aur).
-# This prevents pacman -Syw from failing the entire transaction when AUR-only packages
-# like apple_cursor, battop-bin, etc. are not found in any database.
-# Uses pacman -Si which correctly resolves literal names, virtual provides, and groups.
-filtered_packages=()
-for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
-  if pacman -Si "$pkg" &>/dev/null 2>&1; then
-    filtered_packages+=("$pkg")
-  fi
-done
+# Exclude known AUR-only packages from pacman -Syw (they cannot be in any repo).
+# The AUR build loop below handles them from source.
+# Only yaru-icon-theme and asusctl are from Chaotic-AUR; the rest are core/extra.
+aur_only=(
+  apple_cursor battop-bin cliamp-bin
+  elephant elephant-symbols elephant-clipboard
+  elephant-desktopapplications elephant-providerlist elephant-menus
+  intel-ipu7-camera localsend-bin python-terminaltexteffects
+  tuxedo-drivers-nocompatcheck-dkms tzupdate ufw-docker
+  walker-bin wooz-git yay-bin yay-debug yt6801-dkms
+)
+filtered_packages=($(comm -23 \
+  <(printf '%s\n' "${all_packages[@]}" | sort -u) \
+  <(printf '%s\n' "${aur_only[@]}" | sort -u) ))
 
 # Download all resolvable packages from official repos + Chaotic-AUR into the offline mirror
 # Pipe yes "1" to auto-select first provider in case of provider prompts
