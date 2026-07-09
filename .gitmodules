@@ -1,0 +1,4 @@
+[submodule "archiso"]
+  path = archiso
+  url = https://gitlab.archlinux.org/archlinux/archiso.git
+  branch = main

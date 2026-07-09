@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# Abort if anything fails
+set -e
+
+# Parse command line arguments
+NO_CACHE=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --no-cache)
+    NO_CACHE=1
+    shift
+    ;;
+  --no-boot-offer)
+    NO_BOOT_OFFER=1
+    shift
+    ;;
+  --local-source)
+    LOCAL_SOURCE=1
+    shift
+    ;;
+  *)
+    echo "Unknown option: $1"
+    echo "Usage: $0 [--no-cache] [--no-boot-offer] [--local-source]"
+    exit 1
+    ;;
+  esac
+done
+
+# Clear out old packages
+sudo rm -rf /var/cache/pacman/pkg/*
+
+# Ensure we have the submodule checked out
+git submodule update --init --recursive --jobs=8
+
+# Prepare build repo
+BUILD_SCRIPT="builder/build-iso.sh"
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+BUILD_RELEASE_PATH="$BUILD_ROOT/release"
+mkdir -p "$BUILD_RELEASE_PATH"
+
+OMANIRI_INSTALLER_REPO="${OMANIRI_INSTALLER_REPO:-niraletter/omaniri}"
+OMANIRI_INSTALLER_REF="${OMANIRI_INSTALLER_REF:-main}"
+
+DOCKER_ARGS=(
+  --rm
+  --privileged
+  -e "OMANIRI_INSTALLER_REPO=$OMANIRI_INSTALLER_REPO"
+  -e "OMANIRI_INSTALLER_REF=$OMANIRI_INSTALLER_REF"
+  -e "HOST_UID=$(id -u)"
+  -e "HOST_GID=$(id -g)"
+  -v "$BUILD_RELEASE_PATH/:/out/"
+  -v "$BUILD_ROOT/$BUILD_SCRIPT:/$BUILD_SCRIPT:ro"
+  -v "$BUILD_ROOT/archiso:/archiso:ro"
+  -v "$BUILD_ROOT/builder:/builder:ro"
+  -v "$BUILD_ROOT/configs:/configs:ro"
+)
+
+# Use local source of Omaniri instead of git checkout
+if [[ -n "${LOCAL_SOURCE-}" ]]; then
+  DOCKER_ARGS+=(-v "$OMANIRI_PATH:/omaniri:ro")
+fi
+
+# Use local pacman cache if you already have one on host to speed up repeat runs
+if [ -d "/var/cache/pacman/pkg" ]; then
+  DOCKER_ARGS+=(-v "/var/cache/pacman/pkg:/var/cache/pacman/pkg")
+fi
+
+# Mount the build cache directory where packages are downloaded
+if [[ -z "$NO_CACHE" ]]; then
+  # using a dated dir on the host to refresh daily if building multiple times
+  BUILD_DATE=$(date +%Y-%m-%d)
+  OFFLINE_REPO_BUILD_CACHE_DIR="$HOME/.cache/omaniri/iso_${BUILD_DATE}/airootfs/var/cache/omaniri"
+  mkdir -p "$OFFLINE_REPO_BUILD_CACHE_DIR"
+  # Mount to /var/cache/airootfs/var/cache/omaniri since that's where repo packages go in the ISO
+  DOCKER_ARGS+=(-v "$OFFLINE_REPO_BUILD_CACHE_DIR:/var/cache/airootfs/var/cache/omaniri")
+fi
+
+# Run the builder with assembled args
+docker run "${DOCKER_ARGS[@]}" archlinux/archlinux:latest /$BUILD_SCRIPT
+
+# Name ISO with installer ref
+latest_iso=$(\ls -t "$BUILD_RELEASE_PATH"/*.iso | head -n1)
+iso_ref="${latest_iso%.*}-$OMANIRI_INSTALLER_REF.iso"
+mv -f "$latest_iso" "$iso_ref"
+
+# Offer to boot the new build
+if [[ -z "$NO_BOOT_OFFER" ]]; then
+  echo
+  gum confirm "Boot $iso_ref?" && omaniri-iso-boot "$iso_ref"
+fi

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cleanup() {
+  [[ -n "${mock_omaniri_install:-}" ]] && rm -rf "$(dirname "$mock_omaniri_install")"
+}
+trap cleanup EXIT
+
+if [[ -z "${OMANIRI_INSTALL:-}" ]]; then
+  if [[ -r /root/omaniri/install/helpers/all.sh ]]; then
+    export OMANIRI_INSTALL=/root/omaniri/install
+  else
+    mock_root="$(mktemp -d)"
+    mock_omaniri_install="$mock_root/install"
+    mkdir -p "$mock_omaniri_install/helpers"
+    cat >"$mock_omaniri_install/helpers/all.sh" <<'EOF'
+PADDING_LEFT=0
+PADDING_LEFT_SPACES=""
+clear_logo() { clear; }
+EOF
+    export OMANIRI_INSTALL="$mock_omaniri_install"
+  fi
+fi
+
+exec bash "$repo_root/configs/airootfs/root/configurator" dry "$@"

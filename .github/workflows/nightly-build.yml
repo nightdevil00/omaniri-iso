@@ -1,0 +1,41 @@
+name: Nightly ISO Build
+
+on:
+  schedule:
+    - cron: '1 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository with submodules
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Build ISO
+      run: ./bin/omaniri-iso-make --no-cache --no-boot-offer
+
+    - name: Fetch version from omaniri repo
+      id: version
+      run: |
+        VERSION=$(curl -sSL https://raw.githubusercontent.com/niraletter/omaniri/main/version)
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Upload ISO to omaniri releases
+      env:
+        GH_TOKEN: ${{ secrets.OMANIRI_PAT }}
+      run: |
+        TAG="v${{ steps.version.outputs.VERSION }}"
+        ISO=$(ls release/*.iso | head -1)
+
+        if gh release view "$TAG" --repo niraletter/omaniri &>/dev/null; then
+          gh release upload "$TAG" "$ISO" --repo niraletter/omaniri --clobber
+        else
+          gh release create "$TAG" "$ISO" \
+            --repo niraletter/omaniri \
+            --title "Omaniri ${{ steps.version.outputs.VERSION }}" \
+            --notes "Nightly build"
+        fi
