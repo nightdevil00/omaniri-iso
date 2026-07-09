@@ -1,0 +1,56 @@
+name: Weekly ISO Build
+
+on:
+  schedule:
+    - cron: "1 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Prepare runner
+        run: |
+          chmod +x bin/omaniri-iso-make builder/build-iso.sh
+          docker info
+
+      - name: Build ISO
+        run: ./bin/omaniri-iso-make --no-cache --no-boot-offer
+
+      - name: Read Omaniri version
+        id: version
+        run: |
+          VERSION=$(curl -fsSL https://raw.githubusercontent.com/niraletter/omaniri/main/version)
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omaniri-iso-v${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
+          path: release/*.iso
+          retention-days: 30
+
+      - name: Publish ISO release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.version.outputs.VERSION }}"
+          ISO=$(ls release/*.iso | head -n 1)
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ISO" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$ISO" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Omaniri ISO ${{ steps.version.outputs.VERSION }}" \
+              --notes "Weekly ISO build"
+          fi
