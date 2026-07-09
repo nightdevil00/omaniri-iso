@@ -138,7 +138,7 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
   grep -Fvx yay-bin "$package_work_dir/aur.packages" >"$package_work_dir/aur-without-yay.packages" || true
 
   if [[ -s "$package_work_dir/aur-without-yay.packages" ]]; then
-    sudo -u aurbuilder yay -S --noconfirm --needed --nocleanmenu --nodiffmenu --noeditmenu --removemake --mflags "--skippgpcheck" $(join_packages "$package_work_dir/aur-without-yay.packages")
+    sudo -u aurbuilder yay -S --noconfirm --needed --cleanmenu=false --diffmenu=false --editmenu=false --removemake --mflags "--skippgpcheck" $(join_packages "$package_work_dir/aur-without-yay.packages")
   fi
 
   find /tmp/aur-build /home/aurbuilder/.cache/yay /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
