@@ -32,7 +32,14 @@ install_arch() {
 
 install_omaniri() {
   chroot_bash -lc "sudo pacman -S --noconfirm --needed gum" >/dev/null
-  chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh || bash"
+
+  if ! chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh"; then
+    echo
+    gum style --foreground 1 "Omaniri installation failed."
+    gum style --foreground 3 "Check the log for details: tail -f /var/log/omaniri-install.log"
+    gum style "After fixing the issue, re-run: /root/.automated_script.sh"
+    exit 1
+  fi
 
   configure_login_for_unencrypted_install
 
