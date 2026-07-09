@@ -67,7 +67,7 @@ mkdir -p "$build_cache_dir/airootfs/opt/packages/"
 cp "/tmp/$NODE_FILENAME" "$build_cache_dir/airootfs/opt/packages/"
 
 # Add our additional packages to packages.x86_64
-arch_packages=(linux git gum jq openssl plymouth tzupdate lvm2 cryptsetup parted)
+arch_packages=(linux git gum jq openssl plymouth lvm2 cryptsetup parted)
 printf '%s\n' "${arch_packages[@]}" >>"$build_cache_dir/packages.x86_64"
 
 # Build list of all the packages needed for the offline mirror
@@ -77,8 +77,11 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/om
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
 # Download all the packages to the offline mirror inside the ISO
+# Only official repo packages can be downloaded; AUR packages are skipped.
 mkdir -p /tmp/offlinedb
+set +e
 pacman --noconfirm -Syw "${all_packages[@]}" --cachedir $offline_mirror_dir/ --dbpath /tmp/offlinedb
+set -e
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
 
 # Create a symlink to the offline mirror instead of duplicating it.
