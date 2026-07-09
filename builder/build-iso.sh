@@ -102,6 +102,7 @@ printf '%s\n' "${arch_packages[@]}" >>"$build_cache_dir/packages.x86_64"
 } | sort -u >"$package_work_dir/all.packages"
 
 read_package_file /builder/aur.packages | sort -u >"$package_work_dir/aur.packages"
+read_package_file /builder/aur-skipchecksums.packages | sort -u >"$package_work_dir/aur-skipchecksums.packages"
 read_package_file /builder/chaotic.packages | sort -u >"$package_work_dir/chaotic.packages"
 cat "$package_work_dir/aur.packages" "$package_work_dir/chaotic.packages" | sort -u >"$package_work_dir/non-pacman.packages"
 comm -23 "$package_work_dir/all.packages" "$package_work_dir/non-pacman.packages" >"$package_work_dir/pacman.packages"
@@ -133,17 +134,40 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
   chmod 440 /etc/sudoers.d/aurbuilder
 
   install -d -o aurbuilder -g aurbuilder /tmp/aur-build
+  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache
   install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache/yay
+  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache/go-build
+  chown -R aurbuilder:aurbuilder /home/aurbuilder
+
+  aur_env=(
+    HOME=/home/aurbuilder
+    XDG_CACHE_HOME=/home/aurbuilder/.cache
+    GOCACHE=/home/aurbuilder/.cache/go-build
+  )
+  yay_flags=(
+    --noconfirm
+    --needed
+    --cleanmenu=false
+    --diffmenu=false
+    --editmenu=false
+    --removemake
+  )
 
   if grep -Fxq yay-bin "$package_work_dir/aur.packages"; then
-    sudo -u aurbuilder git clone https://aur.archlinux.org/yay-bin.git /tmp/aur-build/yay-bin
-    sudo -u aurbuilder bash -lc 'cd /tmp/aur-build/yay-bin && makepkg -si --noconfirm'
+    sudo -u aurbuilder env "${aur_env[@]}" git clone https://aur.archlinux.org/yay-bin.git /tmp/aur-build/yay-bin
+    sudo -u aurbuilder env "${aur_env[@]}" bash -lc 'cd /tmp/aur-build/yay-bin && makepkg -si --noconfirm --nocheck'
   fi
 
   grep -Fvx yay-bin "$package_work_dir/aur.packages" >"$package_work_dir/aur-without-yay.packages" || true
+  comm -12 "$package_work_dir/aur-without-yay.packages" "$package_work_dir/aur-skipchecksums.packages" >"$package_work_dir/aur-without-yay-skipchecksums.packages"
+  comm -23 "$package_work_dir/aur-without-yay.packages" "$package_work_dir/aur-without-yay-skipchecksums.packages" >"$package_work_dir/aur-without-yay-strict.packages"
 
-  if [[ -s "$package_work_dir/aur-without-yay.packages" ]]; then
-    sudo -u aurbuilder yay -S --noconfirm --needed --cleanmenu=false --diffmenu=false --editmenu=false --removemake --mflags "--skippgpcheck" $(join_packages "$package_work_dir/aur-without-yay.packages")
+  if [[ -s "$package_work_dir/aur-without-yay-strict.packages" ]]; then
+    sudo -u aurbuilder env "${aur_env[@]}" yay -S "${yay_flags[@]}" --mflags "--skippgpcheck --nocheck" $(join_packages "$package_work_dir/aur-without-yay-strict.packages")
+  fi
+
+  if [[ -s "$package_work_dir/aur-without-yay-skipchecksums.packages" ]]; then
+    sudo -u aurbuilder env "${aur_env[@]}" yay -S "${yay_flags[@]}" --mflags "--skippgpcheck --skipchecksums --nocheck" $(join_packages "$package_work_dir/aur-without-yay-skipchecksums.packages")
   fi
 
   find /tmp/aur-build /home/aurbuilder/.cache/yay /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;

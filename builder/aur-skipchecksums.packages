@@ -1,0 +1,3 @@
+# yt6801-dkms currently ships an AUR source checksum that does not match
+# the downloaded upstream archive. Keep the checksum bypass scoped to it.
+yt6801-dkms
