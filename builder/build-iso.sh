@@ -104,9 +104,20 @@ chown builder:builder /tmp/aur-build
 # so makepkg -s does not prompt for provider selection during dependency resolution
 pacman --noconfirm -S rust go
 
-# Download all packages from official repos + Chaotic-AUR into the offline mirror
+# Filter all_packages to only those resolvable in configured repos (core, extra, chaotic-aur).
+# This prevents pacman -Syw from failing the entire transaction when AUR-only packages
+# like apple_cursor, battop-bin, etc. are not found in any database.
+# Uses pacman -Si which correctly resolves literal names, virtual provides, and groups.
+filtered_packages=()
+for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
+  if pacman -Si "$pkg" &>/dev/null 2>&1; then
+    filtered_packages+=("$pkg")
+  fi
+done
+
+# Download all resolvable packages from official repos + Chaotic-AUR into the offline mirror
 # Pipe yes "1" to auto-select first provider in case of provider prompts
-yes "1" | pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+yes "1" | pacman --noconfirm -Syw "${filtered_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
 
 # Build remaining AUR packages from source (those not found in official or Chaotic-AUR repos)
 for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
