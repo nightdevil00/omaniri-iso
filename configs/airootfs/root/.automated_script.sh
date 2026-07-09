@@ -31,7 +31,7 @@ install_arch() {
 }
 
 install_omaniri() {
-  chroot_bash -lc "sudo pacman -S --noconfirm --needed gum" >/dev/null
+  arch-chroot /mnt/ pacman -S --noconfirm --needed gum >/dev/null
 
   if ! chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh"; then
     echo
