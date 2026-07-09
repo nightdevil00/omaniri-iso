@@ -25,6 +25,7 @@ pacman --noconfirm -Sy archlinux-keyring
 # makepkg and yay use /etc/pacman.conf for dependency resolution.
 # Use the same repo config as the offline downloader so multilib dependencies are available.
 cp /configs/pacman-online.conf /etc/pacman.conf
+pacman --noconfirm -Sy
 
 # Setup build locations
 build_cache_dir="/var/cache"
