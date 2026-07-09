@@ -93,7 +93,7 @@ pacman -Sy
 # Re-install base-devel after Chaotic-AUR sync so all group members are resolvable
 pacman --noconfirm -S base-devel
 
-all_packages+=(yay-bin yaru-icon-theme)
+all_packages+=(yay-bin)
 
 useradd -m builder
 echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
