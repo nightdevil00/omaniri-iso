@@ -2,10 +2,22 @@
 
 set -e
 
+read_package_file() {
+  local file="$1"
+  [[ -f $file ]] || return 0
+  sed 's/#.*//' "$file" | awk 'NF {print $1}'
+}
+
+join_packages() {
+  local file="$1"
+  [[ -s $file ]] || return 0
+  tr '\n' ' ' <"$file"
+}
+
 # Note that these are packages installed to the Arch container used to build the ISO.
 pacman-key --init
 pacman --noconfirm -Sy archlinux-keyring
-pacman --noconfirm -Sy archiso git sudo base-devel jq grub
+pacman --noconfirm -Sy archiso git sudo base-devel jq grub pacman-contrib curl
 
 # Verify Arch Linux keyring is available
 pacman --noconfirm -Sy archlinux-keyring
@@ -13,8 +25,10 @@ pacman --noconfirm -Sy archlinux-keyring
 # Setup build locations
 build_cache_dir="/var/cache"
 offline_mirror_dir="$build_cache_dir/airootfs/var/cache/omaniri/mirror/offline"
+package_work_dir="/tmp/omaniri-package-lists"
 mkdir -p $build_cache_dir/
 mkdir -p $offline_mirror_dir/
+mkdir -p "$package_work_dir"
 
 # We base our ISO on the official arch ISO (releng) config
 cp -r /archiso/configs/releng/* $build_cache_dir/
@@ -28,13 +42,17 @@ rm -rf "$build_cache_dir/airootfs/etc/xdg/reflector"
 # Bring in our configs
 cp -r /configs/* $build_cache_dir/
 
+# Remove Arch releng boot entries that should not appear on the Omaniri ISO.
+rm -f "$build_cache_dir/efiboot/loader/entries/"*.conf
+cp -r /configs/efiboot/loader/entries/* "$build_cache_dir/efiboot/loader/entries/"
+
 
 
 # Setup Omaniri itself
 if [[ -d /omaniri ]]; then
   cp -rp /omaniri "$build_cache_dir/airootfs/root/omaniri"
 else
-  git clone -b $OMANIRI_INSTALLER_REF https://github.com/niraletter/omaniri.git "$build_cache_dir/airootfs/root/omaniri"
+  git clone -b $OMANIRI_INSTALLER_REF https://github.com/$OMANIRI_INSTALLER_REPO.git "$build_cache_dir/airootfs/root/omaniri"
 fi
 
 # Make log uploader available in the ISO too
@@ -70,16 +88,65 @@ cp "/tmp/$NODE_FILENAME" "$build_cache_dir/airootfs/opt/packages/"
 arch_packages=(linux git gum jq openssl plymouth tzupdate lvm2 cryptsetup parted)
 printf '%s\n' "${arch_packages[@]}" >>"$build_cache_dir/packages.x86_64"
 
-# Build list of all the packages needed for the offline mirror
-all_packages=($(cat "$build_cache_dir/packages.x86_64"))
-all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/omaniri-base.packages" | grep -v '^$'))
-all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/omaniri-other.packages" | grep -v '^$'))
-all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
+# Build package source lists for the offline mirror
+{
+  read_package_file "$build_cache_dir/packages.x86_64"
+  read_package_file "$build_cache_dir/airootfs/root/omaniri/install/omaniri-base.packages"
+  read_package_file "$build_cache_dir/airootfs/root/omaniri/install/omaniri-other.packages"
+  read_package_file /builder/archinstall.packages
+} | sort -u >"$package_work_dir/all.packages"
 
-# Download all the packages to the offline mirror inside the ISO
+read_package_file /builder/aur.packages | sort -u >"$package_work_dir/aur.packages"
+read_package_file /builder/chaotic.packages | sort -u >"$package_work_dir/chaotic.packages"
+cat "$package_work_dir/aur.packages" "$package_work_dir/chaotic.packages" | sort -u >"$package_work_dir/non-pacman.packages"
+comm -23 "$package_work_dir/all.packages" "$package_work_dir/non-pacman.packages" >"$package_work_dir/pacman.packages"
+
+# Download official Arch packages to the offline mirror inside the ISO
 mkdir -p /tmp/offlinedb
-pacman --noconfirm -Syw "${all_packages[@]}" --cachedir $offline_mirror_dir/ --dbpath /tmp/offlinedb
-repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
+if [[ -s "$package_work_dir/pacman.packages" ]]; then
+  pacman --config /configs/pacman-online.conf --noconfirm -Syw $(join_packages "$package_work_dir/pacman.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
+fi
+
+# Download selected Chaotic-AUR binary packages.
+if [[ -s "$package_work_dir/chaotic.packages" ]]; then
+  chaotic_conf=/tmp/pacman-chaotic.conf
+  cp /configs/pacman-online.conf "$chaotic_conf"
+  cat <<'EOF' >>"$chaotic_conf"
+
+[chaotic-aur]
+SigLevel = Never
+Server = https://geo-mirror.chaotic.cx/$repo/$arch
+EOF
+  mkdir -p /tmp/chaoticdb
+  pacman --config "$chaotic_conf" --noconfirm -Syw $(join_packages "$package_work_dir/chaotic.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/chaoticdb
+fi
+
+# Build AUR packages and copy the resulting package files into the offline mirror.
+if [[ -s "$package_work_dir/aur.packages" ]]; then
+  useradd -m -G wheel aurbuilder
+  printf 'aurbuilder ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/aurbuilder
+  chmod 440 /etc/sudoers.d/aurbuilder
+
+  install -d -o aurbuilder -g aurbuilder /tmp/aur-build
+  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache/yay
+
+  if grep -Fxq yay-bin "$package_work_dir/aur.packages"; then
+    sudo -u aurbuilder git clone https://aur.archlinux.org/yay-bin.git /tmp/aur-build/yay-bin
+    sudo -u aurbuilder bash -lc 'cd /tmp/aur-build/yay-bin && makepkg -si --noconfirm'
+  fi
+
+  grep -Fvx yay-bin "$package_work_dir/aur.packages" >"$package_work_dir/aur-without-yay.packages" || true
+
+  if [[ -s "$package_work_dir/aur-without-yay.packages" ]]; then
+    sudo -u aurbuilder yay -S --noconfirm --needed --nocleanmenu --nodiffmenu --noeditmenu --removemake --mflags "--skippgpcheck" $(join_packages "$package_work_dir/aur-without-yay.packages")
+  fi
+
+  find /tmp/aur-build /home/aurbuilder/.cache/yay /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
+fi
+
+shopt -s nullglob
+repo_packages=("$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
+repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "${repo_packages[@]}"
 
 # Create a symlink to the offline mirror instead of duplicating it.
 # mkarchiso needs packages at /var/cache/omaniri/mirror/offline in the container,

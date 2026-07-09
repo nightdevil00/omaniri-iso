@@ -2,9 +2,9 @@
 # shellcheck disable=SC2034
 
 iso_name="omaniri"
-iso_label="OMANIRI_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
-iso_publisher="Omaniri"
-iso_application="Omaniri Installer"
+iso_label="ARCH_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_publisher="Arch Linux <https://archlinux.org>"
+iso_application="Arch Linux Live/Rescue DVD"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="arch"
 buildmodes=('iso')

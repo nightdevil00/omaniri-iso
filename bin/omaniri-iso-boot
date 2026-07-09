@@ -26,20 +26,29 @@ if [[ ! -f $DISK || $REUSE != "reuse" ]]; then
   cp /usr/share/edk2/x64/OVMF_VARS.4m.fd /tmp/OVMF_VARS.4m.fd
 fi
 
-# Boot from ISO before we've installed, then boot from drive after
+if [[ $ISO == "/dev/null" ]]; then
+  disk_bootindex=1
+  cd_bootindex=2
+else
+  disk_bootindex=2
+  cd_bootindex=1
+fi
+
+# Boot from ISO before we've installed, then boot from drive after.
 qemu-system-x86_64 \
+  -name "Omaniri Arch Linux" \
   -cpu host -enable-kvm -machine q35,accel=kvm \
   -smp "$(nproc)" \
   -m 8192 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
   -drive if=pflash,format=raw,file=/tmp/OVMF_VARS.4m.fd \
   -drive file="$DISK",format=qcow2,if=none,id=drive0 \
-  -device virtio-blk-pci,drive=drive0,bootindex=1 \
+  -device virtio-blk-pci,drive=drive0,bootindex="$disk_bootindex" \
   -drive file="$ISO",media=cdrom,if=none,format=raw,id=cdrom0 \
-  -device ide-cd,drive=cdrom0,bootindex=2 \
+  -device ide-cd,drive=cdrom0,bootindex="$cd_bootindex" \
   -device virtio-vga-gl \
   -display gtk,gl=on \
   -usb -device usb-tablet \
   -netdev user,id=net0,hostfwd=tcp::2222-:22 \
   -device virtio-net-pci,netdev=net0 \
-  -boot menu=on
+  -boot menu=off

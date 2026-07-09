@@ -27,8 +27,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Clear out old packages
-sudo rm -rf /var/cache/pacman/pkg/*
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is not available to this user. Start Docker and ensure your user can run docker without sudo."
+  exit 1
+fi
 
 # Ensure we have the submodule checked out
 git submodule update --init --recursive --jobs=8
@@ -41,6 +43,27 @@ mkdir -p "$BUILD_RELEASE_PATH"
 
 OMANIRI_INSTALLER_REPO="${OMANIRI_INSTALLER_REPO:-niraletter/omaniri}"
 OMANIRI_INSTALLER_REF="${OMANIRI_INSTALLER_REF:-main}"
+
+omaniri_version() {
+  local version=""
+
+  if [[ -n "${LOCAL_SOURCE-}" && -n "${OMANIRI_PATH:-}" && -f "$OMANIRI_PATH/version" ]]; then
+    version=$(<"$OMANIRI_PATH/version")
+  elif [[ -f "$BUILD_ROOT/../omaniri/version" ]]; then
+    version=$(<"$BUILD_ROOT/../omaniri/version")
+  else
+    version=$(curl -fsSL "https://raw.githubusercontent.com/$OMANIRI_INSTALLER_REPO/$OMANIRI_INSTALLER_REF/version" 2>/dev/null || true)
+  fi
+
+  version="${version%%$'\n'*}"
+  version="${version//[^[:alnum:]._-]/-}"
+
+  if [[ -n $version ]]; then
+    printf '%s' "$version"
+  else
+    printf '%s' "$OMANIRI_INSTALLER_REF"
+  fi
+}
 
 DOCKER_ARGS=(
   --rm
@@ -79,9 +102,10 @@ fi
 # Run the builder with assembled args
 docker run "${DOCKER_ARGS[@]}" archlinux/archlinux:latest /$BUILD_SCRIPT
 
-# Name ISO with installer ref
+# Name ISO with the Omaniri version when available.
 latest_iso=$(\ls -t "$BUILD_RELEASE_PATH"/*.iso | head -n1)
-iso_ref="${latest_iso%.*}-$OMANIRI_INSTALLER_REF.iso"
+iso_version=$(omaniri_version)
+iso_ref="${latest_iso%.*}-v$iso_version.iso"
 mv -f "$latest_iso" "$iso_ref"
 
 # Offer to boot the new build
