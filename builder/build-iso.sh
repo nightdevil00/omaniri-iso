@@ -90,6 +90,9 @@ EOF
 # Sync Chaotic-AUR database (pacman -Sy only, not -Syu, to avoid kernel upgrades inside builder)
 pacman -Sy
 
+# Re-install base-devel after Chaotic-AUR sync so all group members are resolvable
+pacman --noconfirm -S base-devel
+
 all_packages+=(yay-bin)
 
 useradd -m builder
