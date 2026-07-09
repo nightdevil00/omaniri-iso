@@ -104,20 +104,11 @@ chown builder:builder /tmp/aur-build
 # so makepkg -s does not prompt for provider selection during dependency resolution
 pacman --noconfirm -S rust go
 
-# Exclude known AUR-only packages from pacman -Syw (they cannot be in any repo).
+# Exclude AUR-only packages from pacman -Syw (they cannot be in any repo).
 # The AUR build loop below handles them from source.
 # yaru-icon-theme is from Chaotic-AUR; asusctl is not in the ISO, installed later.
-aur_only=(
-  apple_cursor battop-bin cliamp-bin
-  elephant elephant-symbols elephant-clipboard
-  elephant-desktopapplications elephant-providerlist elephant-menus
-  google-chrome intel-ipu7-camera lib32-nvidia-580xx-utils
-  limine-mkinitcpio-hook limine-snapper-sync
-  localsend-bin nvidia-580xx-dkms nvidia-580xx-utils
-  opencode python-terminaltexteffects
-  tuxedo-drivers-nocompatcheck-dkms tzupdate ufw-docker
-  walker-bin wooz-git xdg-terminal-exec yay-bin yay-debug yt6801-dkms
-)
+aur_only=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/aur-only.packages" | grep -v '^$'))
+aur_only+=(yay-bin)
 filtered_packages=($(comm -23 \
   <(printf '%s\n' "${all_packages[@]}" | sort -u) \
   <(printf '%s\n' "${aur_only[@]}" | sort -u) ))
