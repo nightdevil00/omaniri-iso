@@ -87,6 +87,9 @@ cat >> /etc/pacman.conf << 'EOF'
 Include = /etc/pacman.d/chaotic-mirrorlist
 EOF
 
+# Sync Chaotic-AUR database (pacman -Sy only, not -Syu, to avoid kernel upgrades inside builder)
+pacman -Sy
+
 all_packages+=(yay-bin)
 
 useradd -m builder
@@ -94,8 +97,13 @@ echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 mkdir -p /tmp/aur-build /tmp/offlinedb
 chown builder:builder /tmp/aur-build
 
+# Install common build dependencies for AUR packages (Rust, Go) in the builder container
+# so makepkg -s does not prompt for provider selection during dependency resolution
+pacman --noconfirm -S rust go
+
 # Download all packages from official repos + Chaotic-AUR into the offline mirror
-pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+# Pipe yes "1" to auto-select first provider in case of provider prompts
+yes "1" | pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
 
 # Build remaining AUR packages from source (those not found in official or Chaotic-AUR repos)
 for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
