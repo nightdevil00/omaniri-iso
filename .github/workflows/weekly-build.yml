@@ -5,9 +5,6 @@ on:
     - cron: "1 0 * * 0"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build-iso:
     runs-on: ubuntu-latest
@@ -38,19 +35,3 @@ jobs:
           name: omaniri-iso-v${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
           path: release/*.iso
           retention-days: 30
-
-      - name: Publish ISO release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="v${{ steps.version.outputs.VERSION }}"
-          ISO=$(ls release/*.iso | head -n 1)
-
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ISO" --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$TAG" "$ISO" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Omaniri ISO ${{ steps.version.outputs.VERSION }}" \
-              --notes "Weekly ISO build"
-          fi
