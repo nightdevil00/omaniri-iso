@@ -138,20 +138,29 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
   install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/yay
   install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/go-build
   install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/xdg-terminal-exec
+  install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/config/yay
   chown -R aurbuilder:aurbuilder /tmp/aur-build /home/aurbuilder
 
   aur_env=(
     HOME=/home/aurbuilder
+    XDG_CONFIG_HOME=/tmp/aur-build/config
     XDG_CACHE_HOME=/tmp/aur-build/cache
     GOCACHE=/tmp/aur-build/cache/go-build
   )
   sudo -u aurbuilder env "${aur_env[@]}" bash -lc '
     set -e
     test "$HOME" = /home/aurbuilder
+    mkdir -p "$XDG_CONFIG_HOME/yay"
     mkdir -p "$GOCACHE" "$XDG_CACHE_HOME/yay" "$XDG_CACHE_HOME/xdg-terminal-exec"
     test -w "$HOME"
+    test -w "$XDG_CONFIG_HOME"
     test -w "$XDG_CACHE_HOME"
     test -w "$GOCACHE"
+    cat >"$XDG_CONFIG_HOME/yay/config.json" <<'"'"'EOF'"'"'
+{
+  "provides": false
+}
+EOF
     touch "$GOCACHE/.write-test" "$XDG_CACHE_HOME/xdg-terminal-exec/.write-test"
     rm -f "$GOCACHE/.write-test" "$XDG_CACHE_HOME/xdg-terminal-exec/.write-test"
   '
