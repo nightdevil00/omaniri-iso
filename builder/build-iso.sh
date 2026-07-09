@@ -76,36 +76,38 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/om
 all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/omaniri-other.packages" | grep -v '^$'))
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
-mkdir -p /tmp/offlinedb
-pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+# Add Chaotic-AUR repo for pre-built AUR package binaries (avoids source compilation)
+pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com
+pacman-key --lsign-key 3056513887B78AEB
+pacman --noconfirm -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst'
+pacman --noconfirm -U 'https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst'
+cat >> /etc/pacman.conf << 'EOF'
 
-# Download pre-built asusctl from CachyOS mirror
-echo "Downloading pre-built asusctl from CachyOS mirror..."
-curl -fsSL "https://cdn77.cachyos.org/repo/x86_64/cachyos/" -o /tmp/cachyos.html 2>/dev/null
-asusctl_file=$(grep -oP 'asusctl-\d[\w.]+-x86_64\.pkg\.tar\.zst' /tmp/cachyos.html | head -1)
-if [ -n "$asusctl_file" ]; then
-  curl -fsSLo "$offline_mirror_dir/$asusctl_file" "https://cdn77.cachyos.org/repo/x86_64/cachyos/$asusctl_file"
-  echo "Downloaded $asusctl_file"
-fi
+[chaotic-aur]
+Include = /etc/pacman.d/chaotic-mirrorlist
+EOF
 
-# For any remaining AUR packages not found in any repo, build from source
+all_packages+=(yay-bin)
+
 useradd -m builder
 echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-mkdir -p /tmp/aurbuild
-chown builder:builder /tmp/aurbuild
+mkdir -p /tmp/aur-build /tmp/offlinedb
+chown builder:builder /tmp/aur-build
+
+# Download all packages from official repos + Chaotic-AUR into the offline mirror
+pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+
+# Build remaining AUR packages from source (those not found in official or Chaotic-AUR repos)
 for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
-  if pacman -Si "$pkg" &>/dev/null; then
-    continue
-  fi
-  if ls "$offline_mirror_dir/$pkg"*.pkg.tar.zst &>/dev/null; then
+  if ls "$offline_mirror_dir/$pkg"*.pkg.tar.zst &>/dev/null 2>&1; then
     continue
   fi
   echo "Building AUR package from source: $pkg"
-  sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aurbuild/$pkg" 2>/dev/null || continue
-  cd "/tmp/aurbuild/$pkg"
-  sudo -u builder MAKEFLAGS="-j$(nproc)" makepkg -s --noconfirm --needed --skippgpcheck 2>&1 || true
-  find /tmp/aurbuild/$pkg -name '*.pkg.tar.zst' -exec cp -f {} "$offline_mirror_dir/" \; 2>/dev/null || true
-  cd /
+  sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aur-build/$pkg" 2>/dev/null || continue
+  pushd "/tmp/aur-build/$pkg" >/dev/null
+  sudo -u builder makepkg -s --noconfirm --skippgpcheck 2>&1 || true
+  find . -name '*.pkg.tar.zst' -exec cp -f {} "$offline_mirror_dir/" \; 2>/dev/null || true
+  popd >/dev/null
 done
 
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
