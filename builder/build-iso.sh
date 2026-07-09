@@ -111,9 +111,12 @@ aur_only=(
   apple_cursor battop-bin cliamp-bin
   elephant elephant-symbols elephant-clipboard
   elephant-desktopapplications elephant-providerlist elephant-menus
-  intel-ipu7-camera localsend-bin python-terminaltexteffects
+  google-chrome intel-ipu7-camera lib32-nvidia-580xx-utils
+  limine-mkinitcpio-hook limine-snapper-sync
+  localsend-bin nvidia-580xx-dkms nvidia-580xx-utils
+  opencode python-terminaltexteffects
   tuxedo-drivers-nocompatcheck-dkms tzupdate ufw-docker
-  walker-bin wooz-git yay-bin yay-debug yt6801-dkms
+  walker-bin wooz-git xdg-terminal-exec yay-bin yay-debug yt6801-dkms
 )
 filtered_packages=($(comm -23 \
   <(printf '%s\n' "${all_packages[@]}" | sort -u) \
