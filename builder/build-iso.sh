@@ -134,16 +134,28 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
   chmod 440 /etc/sudoers.d/aurbuilder
 
   install -d -o aurbuilder -g aurbuilder /tmp/aur-build
-  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache
-  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache/yay
-  install -d -o aurbuilder -g aurbuilder /home/aurbuilder/.cache/go-build
-  chown -R aurbuilder:aurbuilder /home/aurbuilder
+  install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache
+  install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/yay
+  install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/go-build
+  install -d -m 0755 -o aurbuilder -g aurbuilder /tmp/aur-build/cache/xdg-terminal-exec
+  chown -R aurbuilder:aurbuilder /tmp/aur-build /home/aurbuilder
 
   aur_env=(
     HOME=/home/aurbuilder
-    XDG_CACHE_HOME=/home/aurbuilder/.cache
-    GOCACHE=/home/aurbuilder/.cache/go-build
+    XDG_CACHE_HOME=/tmp/aur-build/cache
+    GOCACHE=/tmp/aur-build/cache/go-build
   )
+  sudo -u aurbuilder env "${aur_env[@]}" bash -lc '
+    set -e
+    test "$HOME" = /home/aurbuilder
+    mkdir -p "$GOCACHE" "$XDG_CACHE_HOME/yay" "$XDG_CACHE_HOME/xdg-terminal-exec"
+    test -w "$HOME"
+    test -w "$XDG_CACHE_HOME"
+    test -w "$GOCACHE"
+    touch "$GOCACHE/.write-test" "$XDG_CACHE_HOME/xdg-terminal-exec/.write-test"
+    rm -f "$GOCACHE/.write-test" "$XDG_CACHE_HOME/xdg-terminal-exec/.write-test"
+  '
+
   yay_flags=(
     --noconfirm
     --needed
@@ -152,6 +164,12 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
     --editmenu=false
     --removemake
   )
+  install_aur_packages() {
+    local file="$1"
+    local mflags="$2"
+    [[ -s $file ]] || return 0
+    sudo -u aurbuilder env "${aur_env[@]}" yay -S "${yay_flags[@]}" --mflags "$mflags" $(join_packages "$file")
+  }
 
   if grep -Fxq yay-bin "$package_work_dir/aur.packages"; then
     sudo -u aurbuilder env "${aur_env[@]}" git clone https://aur.archlinux.org/yay-bin.git /tmp/aur-build/yay-bin
@@ -162,15 +180,10 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
   comm -12 "$package_work_dir/aur-without-yay.packages" "$package_work_dir/aur-skipchecksums.packages" >"$package_work_dir/aur-without-yay-skipchecksums.packages"
   comm -23 "$package_work_dir/aur-without-yay.packages" "$package_work_dir/aur-without-yay-skipchecksums.packages" >"$package_work_dir/aur-without-yay-strict.packages"
 
-  if [[ -s "$package_work_dir/aur-without-yay-strict.packages" ]]; then
-    sudo -u aurbuilder env "${aur_env[@]}" yay -S "${yay_flags[@]}" --mflags "--skippgpcheck --nocheck" $(join_packages "$package_work_dir/aur-without-yay-strict.packages")
-  fi
+  install_aur_packages "$package_work_dir/aur-without-yay-strict.packages" "--skippgpcheck --nocheck"
+  install_aur_packages "$package_work_dir/aur-without-yay-skipchecksums.packages" "--skippgpcheck --skipchecksums --nocheck"
 
-  if [[ -s "$package_work_dir/aur-without-yay-skipchecksums.packages" ]]; then
-    sudo -u aurbuilder env "${aur_env[@]}" yay -S "${yay_flags[@]}" --mflags "--skippgpcheck --skipchecksums --nocheck" $(join_packages "$package_work_dir/aur-without-yay-skipchecksums.packages")
-  fi
-
-  find /tmp/aur-build /home/aurbuilder/.cache/yay /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
+  find /tmp/aur-build /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
 fi
 
 shopt -s nullglob
