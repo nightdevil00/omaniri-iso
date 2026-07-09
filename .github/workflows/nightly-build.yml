@@ -16,7 +16,9 @@ jobs:
         submodules: recursive
 
     - name: Build ISO
-      run: ./bin/omaniri-iso-make --no-cache --no-boot-offer
+      run: |
+        chmod +x bin/omaniri-iso-make
+        ./bin/omaniri-iso-make --no-cache --no-boot-offer
 
     - name: Fetch version from omaniri repo
       id: version
