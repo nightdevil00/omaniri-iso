@@ -76,12 +76,24 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/om
 all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/omaniri-other.packages" | grep -v '^$'))
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
-# Download all the packages to the offline mirror inside the ISO
-# Only official repo packages can be downloaded; AUR packages are skipped.
+# Download all packages to the offline mirror (official repos + AUR)
 mkdir -p /tmp/offlinedb
-set +e
-pacman --noconfirm -Syw "${all_packages[@]}" --cachedir $offline_mirror_dir/ --dbpath /tmp/offlinedb
-set -e
+pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+
+# Build AUR packages that aren't in official repos
+mkdir -p /tmp/aurbuild
+for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
+  if pacman -Si "$pkg" &>/dev/null; then
+    continue
+  fi
+  echo "Building AUR package: $pkg"
+  git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aurbuild/$pkg" 2>/dev/null || continue
+  cd "/tmp/aurbuild/$pkg"
+  MAKEFLAGS="-j$(nproc)" makepkg -s --noconfirm --needed 2>&1 || true
+  cp -f *.pkg.tar.zst "$offline_mirror_dir/" 2>/dev/null || true
+  cd /
+done
+
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
 
 # Create a symlink to the offline mirror instead of duplicating it.
