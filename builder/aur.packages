@@ -14,7 +14,6 @@ nvidia-580xx-dkms
 nvidia-580xx-utils
 lib32-nvidia-580xx-utils
 python-terminaltexteffects
-tuxedo-drivers-nocompatcheck-dkms
 tzupdate
 ufw-docker
 walker-bin
