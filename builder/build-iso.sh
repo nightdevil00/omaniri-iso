@@ -118,19 +118,74 @@ filtered_packages=($(comm -23 \
 yes "1" | pacman --noconfirm -Syw "${filtered_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
 
 # Build remaining AUR packages from source (those not found in official or Chaotic-AUR repos)
+failed_aur_builds=()
 for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
   if ls "$offline_mirror_dir/$pkg"*.pkg.tar.zst &>/dev/null 2>&1; then
     continue
   fi
   echo "Building AUR package from source: $pkg"
-  sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aur-build/$pkg" 2>/dev/null || continue
+  if ! sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aur-build/$pkg" 2>/dev/null; then
+    failed_aur_builds+=("$pkg (clone failed)")
+    continue
+  fi
   pushd "/tmp/aur-build/$pkg" >/dev/null
-  sudo -u builder makepkg -s --noconfirm --skippgpcheck 2>&1 || true
-  find . -name '*.pkg.tar.zst' -exec cp -f {} "$offline_mirror_dir/" \; 2>/dev/null || true
+  if sudo -u builder makepkg -s --noconfirm --skippgpcheck 2>&1; then
+    find . -name '*.pkg.tar.zst' -exec cp -f {} "$offline_mirror_dir/" \;
+    # Install the built packages into the builder so later AUR builds can
+    # resolve them as dependencies (e.g. walker-bin depends on elephant)
+    find . -name '*.pkg.tar.zst' ! -name '*-debug-*' -exec pacman -U --noconfirm {} +
+  else
+    failed_aur_builds+=("$pkg (makepkg failed)")
+  fi
   popd >/dev/null
 done
 
+if ((${#failed_aur_builds[@]} > 0)); then
+  echo "ERROR: failed to build AUR packages for the offline mirror:"
+  printf '  %s\n' "${failed_aur_builds[@]}"
+  exit 1
+fi
+
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
+
+# Pull in official-repo dependencies of the AUR-built packages so the offline
+# mirror contains the full dependency closure (e.g. walker-bin needs
+# gtk4-layer-shell). The [offline] repo resolves the AUR-built packages
+# themselves; pacman skips files already present in the cache dir.
+cp /etc/pacman.conf /tmp/pacman-closure.conf
+cat >> /tmp/pacman-closure.conf <<EOF
+
+[offline]
+SigLevel = Optional TrustAll
+Server = file://$offline_mirror_dir/
+EOF
+yes "1" | pacman --noconfirm --config /tmp/pacman-closure.conf -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
+repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
+
+# Verify every required package (and its dependency tree) is resolvable from
+# the offline mirror alone, so an incomplete mirror fails the build here
+# instead of surfacing as "target not found" during installation.
+cat > /tmp/pacman-verify.conf <<EOF
+[options]
+Architecture = auto
+
+[offline]
+SigLevel = Optional TrustAll
+Server = file://$offline_mirror_dir/
+EOF
+mkdir -p /tmp/verifydb
+pacman --config /tmp/pacman-verify.conf --dbpath /tmp/verifydb -Sy
+missing_packages=()
+for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
+  if ! pacman --config /tmp/pacman-verify.conf --dbpath /tmp/verifydb -Sp "$pkg" >/dev/null 2>&1; then
+    missing_packages+=("$pkg")
+  fi
+done
+if ((${#missing_packages[@]} > 0)); then
+  echo "ERROR: packages missing or unresolvable from the offline mirror:"
+  printf '  %s\n' "${missing_packages[@]}"
+  exit 1
+fi
 
 # Create a symlink to the offline mirror instead of duplicating it.
 # mkarchiso needs packages at /var/cache/omaniri/mirror/offline in the container,
