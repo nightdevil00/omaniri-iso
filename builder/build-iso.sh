@@ -76,22 +76,17 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/om
 all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/omaniri-other.packages" | grep -v '^$'))
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
-# Download all packages to the offline mirror (official repos + AUR)
-# Add CachyOS repo as a third-party source for pre-built AUR packages
-curl -fsSLo /etc/pacman.d/cachyos-mirrorlist https://mirror.cachyos.org/cachyos-mirrorlist
-cat >> /etc/pacman.conf << 'PACMANCONF'
-
-[cachyos]
-SigLevel = Optional TrustAll
-Include = /etc/pacman.d/cachyos-mirrorlist
-[cachyos-v3]
-SigLevel = Optional TrustAll
-Include = /etc/pacman.d/cachyos-mirrorlist
-PACMANCONF
-pacman --noconfirm -Sy 2>&1 | tail -5 || true
-
 mkdir -p /tmp/offlinedb
 pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
+
+# Download pre-built asusctl from CachyOS mirror
+echo "Downloading pre-built asusctl from CachyOS mirror..."
+curl -fsSL "https://cdn77.cachyos.org/repo/x86_64/cachyos/" -o /tmp/cachyos.html 2>/dev/null
+asusctl_file=$(grep -oP 'asusctl-\d[\w.]+-x86_64\.pkg\.tar\.zst' /tmp/cachyos.html | head -1)
+if [ -n "$asusctl_file" ]; then
+  curl -fsSLo "$offline_mirror_dir/$asusctl_file" "https://cdn77.cachyos.org/repo/x86_64/cachyos/$asusctl_file"
+  echo "Downloaded $asusctl_file"
+fi
 
 # For any remaining AUR packages not found in any repo, build from source
 useradd -m builder
