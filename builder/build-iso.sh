@@ -22,6 +22,10 @@ pacman --noconfirm -Sy archiso git sudo base-devel jq grub pacman-contrib curl
 # Verify Arch Linux keyring is available
 pacman --noconfirm -Sy archlinux-keyring
 
+# makepkg and yay use /etc/pacman.conf for dependency resolution.
+# Use the same repo config as the offline downloader so multilib dependencies are available.
+cp /configs/pacman-online.conf /etc/pacman.conf
+
 # Setup build locations
 build_cache_dir="/var/cache"
 offline_mirror_dir="$build_cache_dir/airootfs/var/cache/omaniri/mirror/offline"
