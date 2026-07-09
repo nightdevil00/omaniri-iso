@@ -77,11 +77,23 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omaniri/install/om
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
 # Download all packages to the offline mirror (official repos + AUR)
+# Add CachyOS repo as a third-party source for pre-built AUR packages
+curl -fsSLo /etc/pacman.d/cachyos-mirrorlist https://mirror.cachyos.org/cachyos-mirrorlist
+cat >> /etc/pacman.conf << 'PACMANCONF'
+
+[cachyos]
+SigLevel = Optional TrustAll
+Include = /etc/pacman.d/cachyos-mirrorlist
+[cachyos-v3]
+SigLevel = Optional TrustAll
+Include = /etc/pacman.d/cachyos-mirrorlist
+PACMANCONF
+pacman --noconfirm -Sy 2>&1 | tail -5 || true
+
 mkdir -p /tmp/offlinedb
 pacman --noconfirm -Syw "${all_packages[@]}" --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb || true
 
-# Build AUR packages that aren't in official repos
-# makepkg refuses to run as root, so create a build user
+# For any remaining AUR packages not found in any repo, build from source
 useradd -m builder
 echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 mkdir -p /tmp/aurbuild
@@ -90,7 +102,10 @@ for pkg in $(printf '%s\n' "${all_packages[@]}" | sort -u); do
   if pacman -Si "$pkg" &>/dev/null; then
     continue
   fi
-  echo "Building AUR package: $pkg"
+  if ls "$offline_mirror_dir/$pkg"*.pkg.tar.zst &>/dev/null; then
+    continue
+  fi
+  echo "Building AUR package from source: $pkg"
   sudo -u builder git clone "https://aur.archlinux.org/$pkg.git" "/tmp/aurbuild/$pkg" 2>/dev/null || continue
   cd "/tmp/aurbuild/$pkg"
   sudo -u builder MAKEFLAGS="-j$(nproc)" makepkg -s --noconfirm --needed --skippgpcheck 2>&1 || true
