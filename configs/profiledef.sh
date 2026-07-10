@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 
 iso_name="omaniri"
-iso_label="ARCH_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
+iso_label="OMANIRI_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
 iso_publisher="Omaniri <https://github.com/niraletter/omaniri>"
 iso_application="Omaniri Live Installer"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"

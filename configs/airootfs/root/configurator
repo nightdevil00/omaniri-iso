@@ -3,9 +3,6 @@
 # Rely on Omaniri for styling and error handling
 source "$OMANIRI_INSTALL/helpers/all.sh"
 
-# Ensure tzupdate is available for guessing timezone
-command -v tzupdate >/dev/null || sudo pacman -Sy --noconfirm tzupdate
-
 abort() {
   gum style "${1:-Aborted installation}"
   echo
@@ -25,14 +22,6 @@ notice() {
   echo
   gum spin --spinner "pulse" --title "$1" -- sleep "${2:-2}"
   echo
-}
-
-normalize_timezone() {
-  case "$1" in
-  Asia/Katmandu) printf '%s\n' "Asia/Kathmandu" ;;
-  "") return 0 ;;
-  *) printf '%s\n' "$1" ;;
-  esac
 }
 
 # STEP 1: KEYBOARD LAYOUT
@@ -149,13 +138,12 @@ user_form() {
   done
 
   # Pick timezone
-  geo_guessed_timezone=$(normalize_timezone "$(tzupdate -p 2>/dev/null || true)")
-  timezone_options=$(timedatectl list-timezones)
+  geo_guessed_timezone=$(tzupdate -p 2>/dev/null || true)
 
-  if [[ -n $geo_guessed_timezone ]] && printf '%s\n' "$timezone_options" | grep -Fxq "$geo_guessed_timezone"; then
-    timezone=$(printf '%s\n' "$timezone_options" | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
+  if [[ -n $geo_guessed_timezone ]] && timedatectl list-timezones | grep -Fxq "$geo_guessed_timezone"; then
+    timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
   else
-    timezone=$(printf '%s\n' "$timezone_options" | gum filter --height 10 --header "Timezone") || abort
+    timezone=$(timedatectl list-timezones | gum filter --height 10 --header "Timezone") || abort
   fi
 }
 
