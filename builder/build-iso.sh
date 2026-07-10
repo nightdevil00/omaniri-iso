@@ -198,6 +198,23 @@ EOF
 fi
 
 shopt -s nullglob
+
+# Cleanup: remove AUR build dependencies that leaked into the offline mirror
+for pkg in clang rust go deno; do
+  rm -f "$offline_mirror_dir/$pkg-"*.pkg.tar*
+done
+
+# Cleanup: deduplicate packages keeping only the latest version
+for pkg in zed; do
+  pkgs=("$offline_mirror_dir/$pkg-"*.pkg.tar*)
+  if ((${#pkgs[@]} > 1)); then
+    latest=$(printf '%s\n' "${pkgs[@]}" | sort -V | tail -1)
+    for f in "${pkgs[@]}"; do
+      [ "$f" != "$latest" ] && rm -f "$f"
+    done
+  fi
+done
+
 repo_packages=("$offline_mirror_dir/"*.pkg.tar "$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "${repo_packages[@]}"
 
