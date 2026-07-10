@@ -36,9 +36,12 @@ install_omaniri() {
   echo
 
   chroot_bash -lc "sudo pacman -S --noconfirm --needed gum" >/dev/null
-  chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh || bash"
 
-  # Reboot if requested by installer
+  if ! chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh"; then
+    gum style --foreground 1 --padding "1 0 1 $PADDING_LEFT" "omaniri install.sh failed - see /mnt/var/log/omaniri-install.log"
+    exit 1
+  fi
+
   if [[ -f /mnt/var/tmp/omaniri-install-completed ]]; then
     reboot
   fi
