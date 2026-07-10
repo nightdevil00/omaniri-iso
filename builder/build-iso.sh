@@ -204,15 +204,23 @@ for pkg in clang rust go deno; do
   rm -f "$offline_mirror_dir/$pkg-"*.pkg.tar*
 done
 
-# Cleanup: deduplicate packages keeping only the latest version
-for pkg in zed; do
-  pkgs=("$offline_mirror_dir/$pkg-"*.pkg.tar*)
-  if ((${#pkgs[@]} > 1)); then
-    latest=$(printf '%s\n' "${pkgs[@]}" | sort -V | tail -1)
-    for f in "${pkgs[@]}"; do
-      [ "$f" != "$latest" ] && rm -f "$f"
-    done
+# Cleanup: deduplicate every package in the mirror, keeping only the latest
+# version. 
+
+declare -A latest_file latest_ver
+for f in "$offline_mirror_dir"/*.pkg.tar*; do
+  [[ -e $f ]] || continue
+  read -r name ver < <(pacman -Qp "$f" 2>/dev/null)
+  [[ -n $name ]] || continue
+  if [[ -z ${latest_ver[$name]:-} ]] || (( $(vercmp "$ver" "${latest_ver[$name]}") > 0 )); then
+    latest_file[$name]=$f
+    latest_ver[$name]=$ver
   fi
+done
+for f in "$offline_mirror_dir"/*.pkg.tar*; do
+  [[ -e $f ]] || continue
+  read -r name _ < <(pacman -Qp "$f" 2>/dev/null)
+  [[ -n $name && "$f" != "${latest_file[$name]:-}" ]] && rm -f "$f"
 done
 
 repo_packages=("$offline_mirror_dir/"*.pkg.tar "$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
