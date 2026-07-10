@@ -2,6 +2,14 @@
 
 set -e
 
+# Packages to remove from the offline mirror after AUR builds complete.
+# These are build-time dependencies that leak into the mirror via AUR
+# packages but should not be shipped in the ISO.
+AUR_BUILD_DEPS_CLEANUP=(clang rust go deno)
+
+# Packages to deduplicate (keep only latest version) in the offline mirror.
+AUR_DEDUP_PACKAGES=(zed)
+
 read_package_file() {
   local file="$1"
   [[ -f $file ]] || return 0
@@ -126,7 +134,7 @@ if [[ -s "$package_work_dir/chaotic.packages" ]]; then
   cat <<'EOF' >>"$chaotic_conf"
 
 [chaotic-aur]
-SigLevel = Never
+SigLevel = Optional TrustAll
 Server = https://geo-mirror.chaotic.cx/$repo/$arch
 EOF
   pacman --config "$chaotic_conf" --noconfirm -Syw $(join_packages "$package_work_dir/chaotic.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
@@ -210,12 +218,12 @@ fi
 shopt -s nullglob
 
 # Cleanup: remove AUR build dependencies that leaked into the offline mirror
-for pkg in clang rust go deno; do
+for pkg in "${AUR_BUILD_DEPS_CLEANUP[@]}"; do
   rm -f "$offline_mirror_dir/$pkg-"*.pkg.tar*
 done
 
 # Cleanup: deduplicate packages keeping only the latest version
-for pkg in zed; do
+for pkg in "${AUR_DEDUP_PACKAGES[@]}"; do
   pkgs=("$offline_mirror_dir/$pkg-"*.pkg.tar*)
   if ((${#pkgs[@]} > 1)); then
     latest=$(printf '%s\n' "${pkgs[@]}" | sort -V | tail -1)
