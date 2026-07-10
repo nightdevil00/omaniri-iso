@@ -138,9 +138,9 @@ user_form() {
   done
 
   # Pick timezone
-  geo_guessed_timezone=$(tzupdate -p 2>/dev/null || true)
+  geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
 
-  if [[ -n $geo_guessed_timezone ]] && timedatectl list-timezones | grep -Fxq "$geo_guessed_timezone"; then
+  if [[ -n $geo_guessed_timezone ]]; then
     timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
   else
     timezone=$(timedatectl list-timezones | gum filter --height 10 --header "Timezone") || abort

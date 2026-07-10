@@ -194,11 +194,11 @@ EOF
   install_aur_packages "$package_work_dir/aur-without-yay-strict.packages" "--skippgpcheck --nocheck"
   install_aur_packages "$package_work_dir/aur-without-yay-skipchecksums.packages" "--skippgpcheck --skipchecksums --nocheck"
 
-  find /tmp/aur-build /var/cache/pacman/pkg -type f \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
+  find /tmp/aur-build /var/cache/pacman/pkg -type f \( -name '*.pkg.tar' -o -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' -o -name '*.pkg.tar.gz' \) -exec cp -n {} "$offline_mirror_dir/" \;
 fi
 
 shopt -s nullglob
-repo_packages=("$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
+repo_packages=("$offline_mirror_dir/"*.pkg.tar "$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "${repo_packages[@]}"
 
 # Create a symlink to the offline mirror instead of duplicating it.
@@ -210,15 +210,6 @@ ln -s "$offline_mirror_dir" "/var/cache/omaniri/mirror/offline"
 # Copy the offline pacman.conf to the ISO's /etc directory so the live environment uses our
 # same config when booted. 
 cp $build_cache_dir/pacman-offline.conf "$build_cache_dir/airootfs/etc/pacman.conf"
-
-# Add the offline mirror as a pacman repo so mkarchiso's pacstrap can install
-# AUR packages (like tzupdate) into the airootfs.
-cat >>/etc/pacman.conf <<'EOF'
-
-[offline]
-SigLevel = Never
-Server = file:///var/cache/omaniri/mirror/offline
-EOF
 
 # Finally, we assemble the entire ISO
 mkarchiso -v -w "$build_cache_dir/work/" -o "/out/" "$build_cache_dir/"
