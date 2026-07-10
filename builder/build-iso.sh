@@ -146,6 +146,8 @@ if [[ -s "$package_work_dir/aur.packages" ]]; then
     XDG_CONFIG_HOME=/tmp/aur-build/config
     XDG_CACHE_HOME=/tmp/aur-build/cache
     GOCACHE=/tmp/aur-build/cache/go-build
+    MAKEFLAGS=-j$(nproc)
+    PKGEXT=.pkg.tar
   )
   sudo -u aurbuilder env "${aur_env[@]}" bash -lc '
     set -e
