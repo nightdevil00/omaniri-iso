@@ -27,6 +27,14 @@ notice() {
   echo
 }
 
+normalize_timezone() {
+  case "$1" in
+  Asia/Katmandu) printf '%s\n' "Asia/Kathmandu" ;;
+  "") return 0 ;;
+  *) printf '%s\n' "$1" ;;
+  esac
+}
+
 # STEP 1: KEYBOARD LAYOUT
 
 keyboard_form() {
@@ -141,12 +149,13 @@ user_form() {
   done
 
   # Pick timezone
-  geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
+  geo_guessed_timezone=$(normalize_timezone "$(tzupdate -p 2>/dev/null || true)")
+  timezone_options=$(timedatectl list-timezones)
 
-  if [[ -n $geo_guessed_timezone ]]; then
-    timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
+  if [[ -n $geo_guessed_timezone ]] && printf '%s\n' "$timezone_options" | grep -Fxq "$geo_guessed_timezone"; then
+    timezone=$(printf '%s\n' "$timezone_options" | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
   else
-    timezone=$(timedatectl list-timezones | gum filter --height 10 --header "Timezone") || abort
+    timezone=$(printf '%s\n' "$timezone_options" | gum filter --height 10 --header "Timezone") || abort
   fi
 }
 
