@@ -10,28 +10,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository with submodules
+      - name: Initialize Build
+        run: |
+          echo "Build started at $(date --utc -Iseconds)"
+          echo "Run #${{ github.run_number }}"
+
+      - name: Checkout Repository
         uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - name: Prepare runner
+      - name: Prepare Build Environment
         run: |
           chmod +x bin/omaniri-iso-make builder/build-iso.sh
           docker info
 
-      - name: Build ISO
+      - name: Setup Dependencies
+        run: |
+          for i in $(seq 1 3); do
+            docker pull archlinux/archlinux:latest && break
+            echo "Pull attempt $i failed, retrying..."
+            sleep 5
+          done
+
+      - name: Build ISO Image
         run: ./bin/omaniri-iso-make --no-cache --no-boot-offer
 
-      - name: Read Omaniri version
+      - name: Read Version Information
         id: version
         run: |
           VERSION=$(curl -fsSL https://raw.githubusercontent.com/niraletter/omaniri/main/version)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Upload ISO artifact
+      - name: Upload ISO Artifact
         uses: actions/upload-artifact@v4
         with:
           name: omaniri-iso-v${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
           path: release/*.iso
           retention-days: 30
+
+      - name: Publish Build Status
+        if: always()
+        run: |
+          echo "Build completed with status: ${{ job.status }}"
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Cleanup Workspace
+        if: always()
+        run: |
+          rm -rf release/*.iso release/*.sha256 2>/dev/null || true
