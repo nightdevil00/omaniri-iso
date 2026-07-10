@@ -35,7 +35,7 @@ install_omaniri() {
   gum style --foreground 3 --padding "1 0 0 $PADDING_LEFT" "Configuring Omaniri desktop environment..."
   echo
 
-  chroot_bash -lc "sudo pacman -S --noconfirm --needed gum" >/dev/null
+  # gum is already installed by archinstall via archinstall.packages, no need to reinstall
   chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh || bash"
 
   # Reboot if requested by installer
@@ -187,7 +187,10 @@ EOF
   mkdir -p /mnt/home/$OMANIRI_USER/.local/share/
   cp -r /root/omaniri /mnt/home/$OMANIRI_USER/.local/share/
 
-  chown -R 1000:1000 /mnt/home/$OMANIRI_USER/.local/
+  # Get the user's UID from the system (defaults to 1000 if lookup fails)
+  local user_uid
+  user_uid=$(id -u "$OMANIRI_USER" 2>/dev/null || echo 1000)
+  chown -R "$user_uid:$user_uid" /mnt/home/$OMANIRI_USER/.local/
 
   # NOPASSWD sudo already configured — no-op the keepalive to avoid password prompt
   > /mnt/home/$OMANIRI_USER/.local/share/omaniri/bin/omaniri-sudo-keepalive

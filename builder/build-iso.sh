@@ -69,7 +69,9 @@ mkdir -p "$build_cache_dir/airootfs/usr/share/plymouth/themes/omaniri"
 cp -r "$build_cache_dir/airootfs/root/omaniri/default/plymouth/"* "$build_cache_dir/airootfs/usr/share/plymouth/themes/omaniri/"
 
 # Download and verify Node.js binary for offline installation
-NODE_DIST_URL="https://nodejs.org/dist/latest"
+# Pin to specific LTS version for reproducibility
+NODE_VERSION="v22.17.1"
+NODE_DIST_URL="https://nodejs.org/dist/$NODE_VERSION"
 
 # Get checksums and parse filename and SHA
 NODE_SHASUMS=$(curl -fsSL "$NODE_DIST_URL/SHASUMS256.txt")
@@ -108,12 +110,16 @@ cat "$package_work_dir/aur.packages" "$package_work_dir/chaotic.packages" | sort
 comm -23 "$package_work_dir/all.packages" "$package_work_dir/non-pacman.packages" >"$package_work_dir/pacman.packages"
 
 # Download official Arch packages to the offline mirror inside the ISO
+# Use a shared offlinedb so version resolution is consistent across all download steps.
+# Previous approach used per-step databases which allowed version skew (e.g., ffmpeg
+# needing libjxl.so=0.11 but mirror having libjxl-0.12 from a different download step).
 mkdir -p /tmp/offlinedb
 if [[ -s "$package_work_dir/pacman.packages" ]]; then
   pacman --config /configs/pacman-online.conf --noconfirm -Syw $(join_packages "$package_work_dir/pacman.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
 fi
 
 # Download selected Chaotic-AUR binary packages.
+# Use the shared offlinedb for consistent version resolution.
 if [[ -s "$package_work_dir/chaotic.packages" ]]; then
   chaotic_conf=/tmp/pacman-chaotic.conf
   cp /configs/pacman-online.conf "$chaotic_conf"
@@ -123,9 +129,13 @@ if [[ -s "$package_work_dir/chaotic.packages" ]]; then
 SigLevel = Never
 Server = https://geo-mirror.chaotic.cx/$repo/$arch
 EOF
-  mkdir -p /tmp/chaoticdb
-  pacman --config "$chaotic_conf" --noconfirm -Syw $(join_packages "$package_work_dir/chaotic.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/chaoticdb
+  pacman --config "$chaotic_conf" --noconfirm -Syw $(join_packages "$package_work_dir/chaotic.packages") --cachedir "$offline_mirror_dir/" --dbpath /tmp/offlinedb
 fi
+
+# Ensure /usr/lib/modules exists so DKMS post-transaction hooks
+# (e.g. nvidia-580xx-dkms) don't abort the build in containers
+# that lack kernel modules.
+mkdir -p /usr/lib/modules
 
 # Build AUR packages and copy the resulting package files into the offline mirror.
 if [[ -s "$package_work_dir/aur.packages" ]]; then
@@ -216,7 +226,12 @@ for pkg in zed; do
 done
 
 repo_packages=("$offline_mirror_dir/"*.pkg.tar "$offline_mirror_dir/"*.pkg.tar.zst "$offline_mirror_dir/"*.pkg.tar.xz "$offline_mirror_dir/"*.pkg.tar.gz)
-repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "${repo_packages[@]}"
+if ((${#repo_packages[@]} > 0)); then
+  repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "${repo_packages[@]}"
+else
+  echo "ERROR: No packages found in offline mirror directory" >&2
+  exit 1
+fi
 
 # Create a symlink to the offline mirror instead of duplicating it.
 # mkarchiso needs packages at /var/cache/omaniri/mirror/offline in the container,
