@@ -31,10 +31,12 @@ install_arch() {
 }
 
 install_omaniri() {
+  clear_logo
+  gum style --foreground 3 --padding "1 0 0 $PADDING_LEFT" "Configuring Omaniri desktop environment..."
+  echo
+
   chroot_bash -lc "sudo pacman -S --noconfirm --needed gum" >/dev/null
   chroot_bash -lc "source /home/$OMANIRI_USER/.local/share/omaniri/install.sh || bash"
-
-  configure_login_for_unencrypted_install
 
   # Reboot if requested by installer
   if [[ -f /mnt/var/tmp/omaniri-install-completed ]]; then
@@ -185,44 +187,13 @@ EOF
 
   chown -R 1000:1000 /mnt/home/$OMANIRI_USER/.local/
 
+  # NOPASSWD sudo already configured — no-op the keepalive to avoid password prompt
+  > /mnt/home/$OMANIRI_USER/.local/share/omaniri/bin/omaniri-sudo-keepalive
+
   # Ensure all necessary scripts are executable
   find /mnt/home/$OMANIRI_USER/.local/share/omaniri -type f -path "*/bin/*" -exec chmod +x {} \;
   chmod +x /mnt/home/$OMANIRI_USER/.local/share/omaniri/boot.sh 2>/dev/null || true
   find /mnt/home/$OMANIRI_USER/.local/share/omaniri/default/waybar -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
-}
-
-configure_login_for_unencrypted_install() {
-  if [[ $(<user_encrypt_installation.txt) != "false" ]]; then
-    return
-  fi
-
-  # Unencrypted installs must stop at SDDM so the user password is entered
-  # before reaching the desktop. Omaniri's normal encrypted path may autologin
-  # because the disk password was already entered at boot.
-  #
-  # Keep the Omaniri SDDM theme and seed SDDM's last user/session state so
-  # first boot looks like the SDDM screen shown after logging out of Omaniri.
-  mkdir -p /mnt/etc/sddm.conf.d
-  rm -f /mnt/etc/sddm.conf.d/autologin.conf
-  cat >/mnt/etc/sddm.conf.d/99-omaniri-login.conf <<EOF
-[Theme]
-Current=omaniri
-
-[Users]
-RememberLastUser=true
-RememberLastSession=true
-EOF
-
-  mkdir -p /mnt/var/lib/sddm
-  cat >/mnt/var/lib/sddm/state.conf <<EOF
-[Last]
-Session=omaniri.desktop
-User=$OMANIRI_USER
-EOF
-
-  rm -f /mnt/etc/systemd/system/getty@tty1.service.d/autologin.conf
-  arch-chroot /mnt chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf >/dev/null 2>&1 || true
-  arch-chroot /mnt systemctl enable sddm.service >/dev/null 2>&1 || true
 }
 
 chroot_bash() {
