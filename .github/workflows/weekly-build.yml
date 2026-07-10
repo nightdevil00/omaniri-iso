@@ -10,11 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Initialize Build
-        run: |
-          echo "Build started at $(date --utc -Iseconds)"
-          echo "Run #${{ github.run_number }}"
-
       - name: Checkout Repository
         uses: actions/checkout@v5
         with:
@@ -24,14 +19,6 @@ jobs:
         run: |
           chmod +x bin/omaniri-iso-make builder/build-iso.sh
           docker info
-
-      - name: Setup Dependencies
-        run: |
-          for i in $(seq 1 3); do
-            docker pull archlinux/archlinux:latest && break
-            echo "Pull attempt $i failed, retrying..."
-            sleep 5
-          done
 
       - name: Build ISO Image
         run: ./bin/omaniri-iso-make --no-cache --no-boot-offer
@@ -48,14 +35,3 @@ jobs:
           name: omaniri-iso-v${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
           path: release/*.iso
           retention-days: 30
-
-      - name: Publish Build Status
-        if: always()
-        run: |
-          echo "Build completed with status: ${{ job.status }}"
-          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-      - name: Cleanup Workspace
-        if: always()
-        run: |
-          rm -rf release/*.iso release/*.sha256 2>/dev/null || true
